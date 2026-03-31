@@ -13,18 +13,15 @@ from rapidfuzz import process, fuzz
 df = pd.read_csv("menu.csv", encoding="cp949")
 menu_list = df["상품명"].tolist()
 
-
 # -------------------------------
 # 2. 문장 임베딩 모델 로드
 # -------------------------------
 model = SentenceTransformer("snunlp/KR-SBERT-V40K-klueNLI-augSTS")
 
-
 # -------------------------------
 # 3. 메뉴명 임베딩 미리 생성
 # -------------------------------
 menu_embeddings = model.encode(menu_list)
-
 
 # -------------------------------
 # 4. 입력 문장 정규화
@@ -40,7 +37,6 @@ def normalize_text(query):
 
     return query.strip()
 
-
 # -------------------------------
 # 5. 코사인 유사도 계산 함수
 # -------------------------------
@@ -48,7 +44,6 @@ def normalize_text(query):
 # 값이 1에 가까울수록 의미적으로 더 유사
 def cosine_similarity(a, b):
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-
 
 # -------------------------------
 # 6. STT 오인식 보정 함수
@@ -104,27 +99,22 @@ def correct_text(query):
 
 
 # -------------------------------
-# 7. 후보 메뉴 리스트 반환 함수 (옵션)
+# 7. 후보 메뉴 리스트 반환 함수 
 # -------------------------------
-# 입력과 가장 가까운 메뉴 후보를 몇 개 보여주기 위한 용도입니다.
+# 입력과 가장 가까운 메뉴 후보를 몇 개 보여주기 위한 용도
 def correct_with_candidates(query, top_k=3):
     # 1. 문장 정규화
     query = normalize_text(query)
-
     # 2. 입력 문장을 벡터로 변환
     query_emb = model.encode([query])[0]
-
     # 3. 전체 메뉴와 유사도 계산
     scores = [
         cosine_similarity(query_emb, menu_emb)
         for menu_emb in menu_embeddings
     ]
-
     # 4. 유사도가 높은 상위 top_k개 메뉴 인덱스 추출
     top_idx = np.argsort(scores)[::-1][:top_k]
-
     # 5. 인덱스를 실제 메뉴명으로 변환
     candidates = [menu_list[i] for i in top_idx]
-
     # 6. 1등 후보와 전체 후보 리스트 반환
     return candidates[0], candidates
