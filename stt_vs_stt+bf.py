@@ -13,8 +13,43 @@ MIC_DISTANCE = 0.077  # 실측값 7.7cm 반영
 SOUND_SPEED = 343.0   # 음속 (m/s)
 
 # 임계치 및 발화 감지 설정
-THRESHOLD_DB = -40.0  # 이 값보다 작은 소리는 무시 (필요시 -35.0 등으로 조정)
+THRESHOLD_DB = -40.0  # 이 값보다 작은 소리는 무시
 RECORD_SEC = 5.0      # 5초 단위 녹음
+
+# # --- 2. 빔포밍 및 사운드 분석 함수 ---
+# def get_rms_db(audio_data):
+#     """오디오 신호의 에너지를 데시벨(dB)로 환산"""
+#     rms = np.sqrt(np.mean(np.square(audio_data)))
+#     return 20 * np.log10(rms + 1e-12)
+
+# def apply_beamforming(stereo_data, target_angle=0):
+#     """
+#     [지연 후 합산 빔포밍]
+#     실측 거리(MIC_DISTANCE)를 기반으로 정면(0도) 소리 강화
+#     """
+#     # 1. 수식에 필요한 파라미터
+#     d = MIC_DISTANCE  # 마이크 거리 : 0.077m
+#     v = SOUND_SPEED   # 음속 : 343.0m/s
+#     fs = RATE         # 샘플 rate : 16000Hz
+    
+#     # 2. 각도(0도)에 따른 시간 지연(tau) 계산
+#     # tau = (d * sin(theta)) / v
+#     radian = np.deg2rad(target_angle)
+#     tau = (d * np.sin(radian)) / v
+    
+#     # 3. tau(지연 시간)을 샘플 단위로 변환 (0도일 땐 0이 됨)
+#     delay_samples = int(tau * fs)
+    
+#     left = stereo_data[:, 0]
+#     right = stereo_data[:, 1]
+    
+#     # 4. 오른쪽 채널에 지연 적용 후 합산 (Delay-and-Sum)
+#     # 정면 0도일 때는 delay_samples가 0이 되어 결국 두 신호를 그대로 더하게 됨
+#     shifted_right = np.roll(right, delay_samples)
+#     # 보강 간섭 (정면 신호 살리기) / 상쇄 간섭 (측면 소음 죽이기)
+#     combined = (left + shifted_right) / 2 
+    
+#     return combined.astype(np.float32)
 
 # --- 2. 빔포밍 및 사운드 분석 함수 ---
 def get_rms_db(audio_data):
@@ -22,31 +57,51 @@ def get_rms_db(audio_data):
     rms = np.sqrt(np.mean(np.square(audio_data)))
     return 20 * np.log10(rms + 1e-12)
 
-def apply_beamforming(stereo_data, target_angle=0):
+def estimate_delay_gcc_phat(sig1, sig2, fs):
+    """GCC-PHAT를 이용해 두 신호 간의 실제 도달 시간차(Delay)를 동적으로 추정"""
+    n = len(sig1) + len(sig2) - 1
+    N_fft = 1 << (n-1).bit_length() # 2의 거듭제곱으로 패딩
+    
+    # 주파수 도메인 변환 및 교차 스펙트럼 계산
+    X1 = np.fft.rfft(sig1, n=N_fft)
+    X2 = np.fft.rfft(sig2, n=N_fft)
+    S = X1 * np.conj(X2)
+    
+    # PHAT 가중치 적용 (위상 정보만 추출하여 노이즈에 강함)
+    S_phat = S / (np.abs(S) + 1e-10)
+    
+    # 시간 도메인으로 복원 후 최대 상관값을 가지는 딜레이 찾기
+    cc = np.fft.irfft(S_phat, n=N_fft)
+    cc = np.concatenate((cc[-N_fft//2:], cc[:N_fft//2]))
+    shift = np.argmax(np.abs(cc)) - N_fft//2
+    
+    # 시간차(초) 반환
+    tau = shift / fs
+    return tau
+
+def apply_beamforming(stereo_data):
     """
-    [지연 후 합산 빔포밍]
-    실측 거리(MIC_DISTANCE)를 기반으로 정면(0도) 소리 강화
+    [적응형 빔포밍 - GCC-PHAT 적용]
+    실시간으로 두 마이크 간의 시간차(tau)를 추정하여 위상을 정렬한 뒤 합산
     """
-    # 1. 수식에 필요한 파라미터 (7.7cm 활용)
-    d = MIC_DISTANCE  # 0.077m
-    v = SOUND_SPEED   # 343.0m/s
-    fs = RATE         # 16000Hz
-    
-    # 2. 수식 적용: 타겟 각도(0도)에 따른 시간 지연(tau) 계산
-    # tau = (d * sin(theta)) / v
-    radian = np.deg2rad(target_angle)
-    tau = (d * np.sin(radian)) / v
-    
-    # 3. 샘플 단위 지연으로 변환 (0도일 땐 0이 됨)
-    delay_samples = int(tau * fs) # tau(지연 시간)의 계산
-    
+    fs = RATE
     left = stereo_data[:, 0]
     right = stereo_data[:, 1]
     
-    # 4. 오른쪽 채널에 지연 적용 후 합산 (Delay-and-Sum)
-    # 정면 0도일 때는 delay_samples가 0이 되어 결국 두 신호를 그대로 더하게 됨
-    shifted_right = np.roll(right, delay_samples)
-    combined = (left + shifted_right) / 2  # 보강 간섭 (정면 신호 살리기) / 상쇄 간섭 (측면 소음 죽이기)
+    # 1. 실시간 도달 시간차(tau) 계산
+    tau = estimate_delay_gcc_phat(left, right, fs)
+    
+    # 2. tau를 샘플 수로 변환
+    delay_samples = int(np.round(tau * fs))
+    
+    # 3. 양쪽 채널을 절반씩 이동하여 중앙(가상 마이크) 기준으로 위상 정렬
+    half_delay = delay_samples // 2
+    
+    aligned_left = np.roll(left, -half_delay)
+    aligned_right = np.roll(right, half_delay)
+    
+    # 4. 합산 (상쇄 간섭 및 보강 간섭 발생)
+    combined = (aligned_left + aligned_right) / 2.0 
     
     return combined.astype(np.float32)
 
