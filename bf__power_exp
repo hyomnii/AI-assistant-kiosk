@@ -1,0 +1,149 @@
+import numpy as np
+import sounddevice as sd
+import whisper
+import time
+import sys
+
+# --- [실험 설정] ---
+RATE = 16000
+CHANNELS = 2
+RECORD_SEC = 5.0
+MODEL_SIZE = "base"
+TRIALS = 3 
+
+# 📍 실험 목록
+EXPERIMENT_LIST = [
+    "20cm_0도_소음X",
+    "40cm_0도_소음X",
+    "40cm_45도_소음X",
+    "40cm_90도_소음X",
+    "20cm_정면_40cm_0도_1kHz소음",
+    "20cm_정면_40cm_45도_1kHz소음",
+    "20cm_정면_40cm_90도_1kHz소음"
+]
+
+def get_rms_db(audio_data):
+    rms = np.sqrt(np.mean(np.square(audio_data)))
+    return 20 * np.log10(rms + 1e-12)
+
+# --- [빔포밍 함수 섹션] ---
+
+def estimate_delay_gcc_phat(sig1, sig2, fs):
+    """GCC-PHAT를 이용해 두 신호 간의 실제 도달 시간차(Delay)를 동적으로 추정"""
+    n = len(sig1) + len(sig2) - 1
+    N_fft = 1 << (n-1).bit_length()
+    
+    X1 = np.fft.rfft(sig1, n=N_fft)
+    X2 = np.fft.rfft(sig2, n=N_fft)
+    S = X1 * np.conj(X2)
+    
+    S_phat = S / (np.abs(S) + 1e-10)
+    
+    cc = np.fft.irfft(S_phat, n=N_fft)
+    cc = np.concatenate((cc[-N_fft//2:], cc[:N_fft//2]))
+    shift = np.argmax(np.abs(cc)) - N_fft//2
+    
+    tau = shift / fs
+    return tau
+
+def apply_beamforming_adaptive(stereo_data):
+    """[적응형 빔포밍] GCC-PHAT로 위치를 추적하여 위상 정렬 후 합산"""
+    fs = RATE
+    left = stereo_data[:, 0]
+    right = stereo_data[:, 1]
+    
+    # 1. 실시간 딜레이 추정
+    tau = estimate_delay_gcc_phat(left, right, fs)
+    delay_samples = int(np.round(tau * fs))
+    
+    # 2. 위상 정렬 (데이터 왜곡 최소화를 위해 pad 사용)
+    if delay_samples > 0:
+        shifted_right = np.pad(right, (delay_samples, 0))[:-delay_samples]
+        combined = (left + shifted_right) / 2.0
+    elif delay_samples < 0:
+        ds = abs(delay_samples)
+        shifted_left = np.pad(left, (ds, 0))[:-ds]
+        combined = (shifted_left + right) / 2.0
+    else:
+        combined = (left + right) / 2.0
+
+    # 3. Whisper 인식률을 위한 정규화
+    norm = np.max(np.abs(combined))
+    if norm > 0:
+        combined = combined / norm
+        
+    return combined.astype(np.float32)
+
+# [기존 고정형 코드 - 주석 처리 보관]
+# def apply_beamforming_stable(stereo_data):
+#     """[안정화 버전] 두 채널을 합산하여 0도(정면) 지향성 확보"""
+#     left = stereo_data[:, 0]
+#     right = stereo_data[:, 1]
+#     combined = (left + right) / 2.0
+#     norm = np.max(np.abs(combined))
+#     if norm > 0:
+#         combined = combined / norm
+#     return combined.astype(np.float32)
+
+def run_experiment():
+    print(f"📦 Whisper 모델({MODEL_SIZE}) 로딩 중...")
+    model = whisper.load_model(MODEL_SIZE)
+    
+    print("\n" + "="*55)
+    print("  🔬 AI 키오스크 빔포밍 성능 평가 (적응형 모드)")
+    print("="*55)
+    
+    for condition in EXPERIMENT_LIST:
+        print("\n" + "─"*55)
+        print(f"🚀 다음 실험 준비: [{condition}]")
+        
+        trial_results = []
+        for i in range(1, TRIALS + 1):
+            time.sleep(0.5)
+            print(f"\n[시도 {i}/{TRIALS}] 대상: {condition}")
+            input(f"📢 세팅 완료 후 [Enter]를 누르면 {RECORD_SEC}초 녹음 시작...")
+            
+            print(f"🔴 녹음 중...")
+            raw = sd.rec(int(RECORD_SEC * RATE), samplerate=RATE, channels=CHANNELS)
+            sd.wait()
+            
+            # 분석 (적응형 함수 호출로 변경됨)
+            audio_n = np.mean(raw, axis=1)
+            audio_b = apply_beamforming_adaptive(raw)
+            
+            # Whisper 전사
+            txt_n = model.transcribe(audio_n, language="ko", fp16=False)['text'].strip()
+            txt_b = model.transcribe(audio_b, language="ko", fp16=False)['text'].strip()
+            
+            trial_results.append({
+                'db_n': get_rms_db(audio_n),
+                'db_b': get_rms_db(audio_b),
+                'txt_n': txt_n,
+                'txt_b': txt_b
+            })
+            print(f"    ✅ {i}회차 분석 완료")
+
+        # --- [캡처용 최종 리포트 출력] ---
+        avg_n = np.mean([r['db_n'] for r in trial_results])
+        avg_b = np.mean([r['db_b'] for r in trial_results])
+        
+        print("\n" + "★"*45)
+        print(f"📋 [실험 리포트] : {condition}") 
+        print(f"1. 일반 평균 파워: {avg_n:.2f} dB")
+        print(f"2. 빔포 평균 파워: {avg_b:.2f} dB")
+        print(f"🔥 소음 억제 이득(Gain): {avg_n - avg_b:.2f} dB")
+        print("-" * 45)
+        print(f"[일반 모드 인식 결과]")
+        for r in trial_results: print(f" - {r['txt_n']}")
+        print("-" * 45)
+        print(f"[빔포밍 모드 인식 결과]")
+        for r in trial_results: print(f" - {r['txt_b']}")
+        print("★"*45)
+        
+        cont = input("\n📸 캡처가 끝났으면 [Enter]를 눌러 다음 실험으로 이동 ('q'는 종료): ")
+        if cont.lower() == 'q': break
+
+    print("\n모든 실험 리스트가 완료되었습니다. 수고하셨습니다!")
+
+if __name__ == "__main__":
+    run_experiment()
