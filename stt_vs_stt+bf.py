@@ -13,7 +13,7 @@ MIC_DISTANCE = 0.077  # 실측값 7.7cm 반영
 SOUND_SPEED = 343.0   # 음속 (m/s)
 
 # 임계치 및 발화 감지 설정
-THRESHOLD_DB = -40.0  # 이 값보다 작은 소리는 무시
+THRESHOLD_DB = -45.0  # 이 값보다 작은 소리는 무시
 RECORD_SEC = 5.0      # 5초 단위 녹음
 
 # # --- 2. 빔포밍 및 사운드 분석 함수 ---
@@ -57,23 +57,65 @@ def get_rms_db(audio_data):
     rms = np.sqrt(np.mean(np.square(audio_data)))
     return 20 * np.log10(rms + 1e-12)
 
-def estimate_delay_gcc_phat(sig1, sig2, fs):
-    """GCC-PHAT를 이용해 두 신호 간의 실제 도달 시간차(Delay)를 동적으로 추정"""
+# def estimate_delay_gcc_phat(sig1, sig2, fs):
+#     """GCC-PHAT를 이용해 두 신호 간의 실제 도달 시간차(Delay)를 동적으로 추정"""
+#     n = len(sig1) + len(sig2) - 1
+#     N_fft = 1 << (n-1).bit_length() # 2의 거듭제곱으로 패딩
+    
+#     # 주파수 도메인 변환 및 교차 스펙트럼 계산
+#     X1 = np.fft.rfft(sig1, n=N_fft)
+#     X2 = np.fft.rfft(sig2, n=N_fft)
+#     S = X1 * np.conj(X2)
+    
+#     # PHAT 가중치 적용 (위상 정보만 추출하여 노이즈에 강함)
+#     S_phat = S / (np.abs(S) + 1e-10)
+    
+#     # 시간 도메인으로 복원 후 최대 상관값을 가지는 딜레이 찾기
+#     cc = np.fft.irfft(S_phat, n=N_fft)
+#     cc = np.concatenate((cc[-N_fft//2:], cc[:N_fft//2]))
+#     shift = np.argmax(np.abs(cc)) - N_fft//2
+    
+#     # 시간차(초) 반환
+#     tau = shift / fs
+#     return tau
+
+def estimate_delay_gcc_phat(sig1, sig2, fs, max_angle=15):
+    """
+    [제한적 GCC-PHAT]
+    두 신호 간의 시간차(Delay)를 추정하되, 키오스크 환경에 맞춰
+    지정된 각도(max_angle, 기본값 좌우 15도) 내의 소리만 추적함.
+    """
     n = len(sig1) + len(sig2) - 1
     N_fft = 1 << (n-1).bit_length() # 2의 거듭제곱으로 패딩
     
-    # 주파수 도메인 변환 및 교차 스펙트럼 계산
+    # 1. 주파수 도메인 변환 및 교차 스펙트럼 계산
     X1 = np.fft.rfft(sig1, n=N_fft)
     X2 = np.fft.rfft(sig2, n=N_fft)
     S = X1 * np.conj(X2)
     
-    # PHAT 가중치 적용 (위상 정보만 추출하여 노이즈에 강함)
+    # 2. PHAT 가중치 적용 (위상 정보만 추출)
     S_phat = S / (np.abs(S) + 1e-10)
     
-    # 시간 도메인으로 복원 후 최대 상관값을 가지는 딜레이 찾기
+    # 3. 시간 도메인으로 복원
     cc = np.fft.irfft(S_phat, n=N_fft)
     cc = np.concatenate((cc[-N_fft//2:], cc[:N_fft//2]))
-    shift = np.argmax(np.abs(cc)) - N_fft//2
+    
+    # --- [🚨핵심 수정 부분: 탐색 범위 제한] ---
+    center = N_fft // 2
+    
+    # 허용할 최대 각도(max_angle)에 따른 최대 지연 샘플 수 계산
+    max_tau = (MIC_DISTANCE * np.sin(np.deg2rad(max_angle))) / SOUND_SPEED
+    max_shift = int(np.ceil(max_tau * fs)) # 올림 처리로 안전한 탐색 범위 확보
+    
+    # 제한된 범위(-max_shift ~ +max_shift) 내에서만 cc 배열 잘라내기
+    search_range = cc[center - max_shift : center + max_shift + 1]
+    
+    # 잘라낸 범위 안에서만 가장 뚜렷한 소리의 위치(local_shift) 찾기
+    local_shift = np.argmax(np.abs(search_range))
+    
+    # 실제 shift 값(-max_shift ~ +max_shift)으로 복원
+    shift = local_shift - max_shift
+    # ------------------------------------------
     
     # 시간차(초) 반환
     tau = shift / fs
