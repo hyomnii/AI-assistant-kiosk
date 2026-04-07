@@ -1,0 +1,410 @@
+MODEL: LLM_ONLY_CORRECTION
+ACCURACY: 80/102 = 78.43%
+01. query: 아이스 라티
+    expected: ICE 카페라떼
+    corrected: ICE 카페라떼
+    success: True
+02. query: 카피라티
+    expected: 카페라떼
+    corrected: 카페라떼
+    success: True
+03. query: 카페 라티
+    expected: 카페라떼
+    corrected: 카페라떼
+    success: True
+04. query: 바닐라 라티
+    expected: 바닐라라떼
+    corrected: 바닐라라떼
+    success: True
+05. query: 연유 라티
+    expected: 연유라떼
+    corrected: 연유라떼
+    success: True
+06. query: 카페 모카
+    expected: 카페모카
+    corrected: 카페모카
+    success: True
+07. query: 카라멜 마키아또
+    expected: 카라멜마끼아또
+    corrected: 카라멜마끼아또
+    success: True
+08. query: 에스프레쏘
+    expected: 에스프레소
+    corrected: 에스프레소
+    success: True
+09. query: 아메리까노
+    expected: 아메리카노
+    corrected: 아메리카노
+    success: True
+10. query: 아이쓰 아메리카노
+    expected: ICE 아메리카노
+    corrected: ICE 아메리카노
+    success: True
+11. query: 디카폐 아메리카노
+    expected: 디카페인 아메리카노
+    corrected: 디카페인 아메리카노
+    success: True
+12. query: 디카페 카페라티
+    expected: 디카페인 카페라떼
+    corrected: 디카페인 카페라떼
+    success: True
+13. query: 복숭아아이스티
+    expected: 복숭아 아이스티
+    corrected: 복숭아 아이스티
+    success: True
+14. query: 레몬 티
+    expected: 레몬차
+    corrected: 레몬차
+    success: True
+15. query: 유자 티
+    expected: 유자차
+    corrected: 유자차
+    success: True
+16. query: 캐모밀
+    expected: 캐모마일
+    corrected: 캐모마일
+    success: True
+17. query: 페퍼민트 티
+    expected: 페퍼민트
+    corrected: ICE 페퍼민트
+    success: False
+18. query: 핫 초코
+    expected: 핫초코
+    corrected: 핫초코
+    success: True
+19. query: 녹차 라티
+    expected: 녹차라떼
+    corrected: 녹차라떼
+    success: True
+20. query: 곡물 라티
+    expected: 곡물라떼
+    corrected: 곡물라떼
+    success: True
+21. query: 치즈케잌
+    expected: 치즈 케익
+    corrected: 치즈 케익
+    success: True
+22. query: 초코케잌
+    expected: 초코 케익
+    corrected: 초코 케익
+    success: True
+23. query: 허니 브래드
+    expected: 허니브레드
+    corrected: 허니브레드
+    success: True
+24. query: 마카다미아쿠키
+    expected: 마카다미아 쿠키
+    corrected: ICE 마카다미아 쿠키
+    success: False
+25. query: 초콜릿쿠기
+    expected: 초콜릿 쿠키
+    corrected: 초코 쿠키
+    success: False
+26. query: 소금 빵
+    expected: 소금빵
+    corrected: 소금빵
+    success: True
+27. query: 마끼야또
+    expected: 카라멜마끼아또
+    corrected: 카라멜마끼아또
+    success: True
+28. query: 디져트 뭐있어
+    expected: 치즈 케익
+    corrected: 디저트 뭐 있어요?
+    success: False
+29. query: 커피 뭐있어
+    expected: 아메리카노
+    corrected: 아메리카노 뭐 있어?
+    success: False
+30. query: 차 종류 보여줘
+    expected: 핫초코
+    corrected: 차 종류 메뉴 알려줘
+    success: False
+31. query: 아아 한잔
+    expected: ICE 아메리카노
+    corrected: ICE 아메리카노 한 잔
+    success: False
+32. query: 뜨아 주세요
+    expected: 아메리카노
+    corrected: ICE 아메리카노 주세요
+    success: False
+33. query: 아이스 카라멜마키아또
+    expected: ICE 카라멜마끼아또
+    corrected: ICE 카라멜마끼아또
+    success: True
+34. query: 아이스 바닐라 라티
+    expected: ICE 바닐라라떼
+    corrected: ICE 바닐라라떼
+    success: True
+35. query: 아이스 연유 라티
+    expected: ICE 연유라떼
+    corrected: ICE 연유라떼
+    success: True
+36. query: 아이스 카페 모카
+    expected: ICE 카페모카
+    corrected: ICE 카페모카
+    success: True
+37. query: 아이스 녹차 라티
+    expected: ICE 녹차라떼
+    corrected: ICE 녹차라떼
+    success: True
+38. query: 아이스 곡물 라티
+    expected: ICE 곡물라떼
+    corrected: ICE 곡물라떼
+    success: True
+39. query: 아이스 캐모밀
+    expected: ICE 캐모마일
+    corrected: ICE 캐모마일
+    success: True
+40. query: 아이스 페퍼민트 티
+    expected: ICE 페퍼민트
+    corrected: ICE 페퍼민트
+    success: True
+41. query: 아이스 레몬 티
+    expected: ICE 레몬차
+    corrected: ICE 레몬차
+    success: True
+42. query: 아이스 유자 티
+    expected: ICE 유자차
+    corrected: ICE 유자차
+    success: True
+43. query: 디카폐 카페라티
+    expected: 디카페인 카페라떼
+    corrected: 디카페인 카페라떼
+    success: True
+44. query: 디카페 아이쓰 아메리카노
+    expected: ICE 디카페인 아메리카노
+    corrected: ICE 디카페인 아메리카노
+    success: True
+45. query: 디카페 아이스 카페라티
+    expected: ICE 디카페인 카페라떼
+    corrected: ICE 디카페인 카페라떼
+    success: True
+46. query: 치즈케이크
+    expected: 치즈 케익
+    corrected: 치즈 케익
+    success: True
+47. query: 초코케이크
+    expected: 초코 케익
+    corrected: 초코 케익
+    success: True
+48. query: 허니 브레드
+    expected: 허니브레드
+    corrected: 허니브레드
+    success: True
+49. query: 마카다미야 쿠키
+    expected: 마카다미아 쿠키
+    corrected: 마카다미아 쿠키
+    success: True
+50. query: 초콜렛 쿠키
+    expected: 초콜릿 쿠키
+    corrected: 초콜릿 쿠키
+    success: True
+51. query: 소금빵이요
+    expected: 소금빵
+    corrected: 소금빵 하나 주세요.
+    success: False
+52. query: 레모차
+    expected: 레몬차
+    corrected: 레몬차
+    success: True
+53. query: 유자티
+    expected: 유자차
+    corrected: 유자차
+    success: True
+54. query: 복숭아 아이스 뜨
+    expected: 복숭아 아이스티
+    corrected: 복숭아 아이스티 ICE 뜨
+    success: False
+55. query: 에스프레소오
+    expected: 에스프레소
+    corrected: 에스프레소
+    success: True
+56. query: 카라멜 마끼야또
+    expected: 카라멜마끼아또
+    corrected: 카라멜마끼아또
+    success: True
+57. query: 카페모카아
+    expected: 카페모카
+    corrected: 카페모카
+    success: True
+58. query: 바닐라 라테
+    expected: 바닐라라떼
+    corrected: 바닐라라떼
+    success: True
+59. query: 연유 라테
+    expected: 연유라떼
+    corrected: ICE 연유라떼
+    success: False
+60. query: 곡물 라테
+    expected: 곡물라떼
+    corrected: 곡물라떼
+    success: True
+61. query: 아매리카노
+    expected: 아메리카노
+    corrected: 아메리카노
+    success: True
+62. query: 아메리카노오
+    expected: 아메리카노
+    corrected: 아메리카노
+    success: True
+63. query: 아이수 아메리카노
+    expected: ICE 아메리카노
+    corrected: ICE 아메리카노
+    success: True
+64. query: 아이스아메리까노
+    expected: ICE 아메리카노
+    corrected: ICE 아메리카노
+    success: True
+65. query: 아이스 아메리카노 한잔
+    expected: ICE 아메리카노
+    corrected: ICE 아메리카노 한 잔
+    success: False
+66. query: 디카패 아메리카노
+    expected: 디카페인 아메리카노
+    corrected: 디카페인 아메리카노
+    success: True
+67. query: 디카페 아메리카노 한잔
+    expected: 디카페인 아메리카노
+    corrected: 디카페인 아메리카노 한 잔
+    success: False
+68. query: 아이쓰 디카페 아메리카노
+    expected: ICE 디카페인 아메리카노
+    corrected: ICE 디카페인 아메리카노
+    success: True
+69. query: 아이스 디카페 아메리까노
+    expected: ICE 디카페인 아메리카노
+    corrected: ICE 디카페인 아메리카노
+    success: True
+70. query: 카폐라떼
+    expected: 카페라떼
+    corrected: 카페라떼
+    success: True
+71. query: 카페라때
+    expected: 카페라떼
+    corrected: 카페라떼
+    success: True
+72. query: 카페라티 한잔
+    expected: 카페라떼
+    corrected: 카페라떼 한 잔
+    success: False
+73. query: 아이스 카페라티 한잔
+    expected: ICE 카페라떼
+    corrected: ICE 카페라떼 한잔
+    success: False
+74. query: 디카페 카페라티 한잔
+    expected: 디카페인 카페라떼
+    corrected: 디카페인 카페라떼 한 잔
+    success: False
+75. query: 아이스 디카페 카페라티
+    expected: ICE 디카페인 카페라떼
+    corrected: ICE 디카페인 카페라떼
+    success: True
+76. query: 바닐라라때
+    expected: 바닐라라떼
+    corrected: 바닐라라떼
+    success: True
+77. query: 아이스 바닐라라때
+    expected: ICE 바닐라라떼
+    corrected: ICE 바닐라라떼
+    success: True
+78. query: 연유라때
+    expected: 연유라떼
+    corrected: 연유라떼
+    success: True
+79. query: 아이스 연유라때
+    expected: ICE 연유라떼
+    corrected: ICE 연유라떼
+    success: True
+80. query: 카패모카
+    expected: 카페모카
+    corrected: 카페모카
+    success: True
+81. query: 카페모카아아
+    expected: 카페모카
+    corrected: 카페모카
+    success: True
+82. query: 아이스 카패모카
+    expected: ICE 카페모카
+    corrected: ICE 카페모카
+    success: True
+83. query: 카라멜 마끼아또
+    expected: 카라멜마끼아또
+    corrected: 카라멜마끼아또
+    success: True
+84. query: 아이스 카라멜 마끼아또
+    expected: ICE 카라멜마끼아또
+    corrected: ICE 카라멜마끼아또
+    success: True
+85. query: 에스프레수
+    expected: 에스프레소
+    corrected: 에스프레소
+    success: True
+86. query: 캐모마이
+    expected: 캐모마일
+    corrected: 캐모마일
+    success: True
+87. query: 캐모마일으
+    expected: 캐모마일
+    corrected: ICE 캐모마일
+    success: False
+88. query: 아이스 캐모마이
+    expected: ICE 캐모마일
+    corrected: ICE 캐모마일
+    success: True
+89. query: 패퍼민트
+    expected: 페퍼민트
+    corrected: 페퍼민트
+    success: True
+90. query: 아이스 패퍼민트
+    expected: ICE 페퍼민트
+    corrected: ICE 페퍼민트
+    success: True
+91. query: 레문차
+    expected: 레몬차
+    corrected: 레몬차
+    success: True
+92. query: 아이스 레문차
+    expected: ICE 레몬차
+    corrected: ICE 레몬차
+    success: True
+93. query: 유자쨔
+    expected: 유자차
+    corrected: 유자차
+    success: True
+94. query: 아이스 유자쨔
+    expected: ICE 유자차
+    corrected: ICE 유자차
+    success: True
+95. query: 복숭아이스티
+    expected: 복숭아 아이스티
+    corrected: ICE 복숭아 아이스티
+    success: False
+96. query: 복숭아 아이스티이
+    expected: 복숭아 아이스티
+    corrected: 복숭아 ICE 아이스티
+    success: False
+97. query: 치쥬케익
+    expected: 치즈 케익
+    corrected: 치즈 케익
+    success: True
+98. query: 초코 케잌이
+    expected: 초코 케익
+    corrected: 초코 케익이
+    success: False
+99. query: 허니 브래드으
+    expected: 허니브레드
+    corrected: 허니브레드
+    success: True
+100. query: 마카다미아 쿠키이
+    expected: 마카다미아 쿠키
+    corrected: 마카다미아 쿠키
+    success: True
+101. query: 초콜렛 쿠키 하나
+    expected: 초콜릿 쿠키
+    corrected: 초코 케익 하나
+    success: False
+102. query: 소금빵 하나 주세요
+    expected: 소금빵
+    corrected: 소금빵 하나 주세요.
+    success: False
