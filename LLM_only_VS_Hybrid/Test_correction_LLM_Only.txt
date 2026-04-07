@@ -1,5 +1,7 @@
 MODEL: LLM_ONLY_CORRECTION
 ACCURACY: 80/102 = 78.43%
+False 문항 번호 → 17, 24, 25, 28, 29, 30, 31, 32, 51, 54, 59, 65, 67, 72, 73, 74, 87, 95, 96, 98, 101, 102
+
 01. query: 아이스 라티
     expected: ICE 카페라떼
     corrected: ICE 카페라떼
