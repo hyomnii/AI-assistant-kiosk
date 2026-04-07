@@ -1,5 +1,7 @@
 MODEL: HYBRID_CORRECTION
 ACCURACY: 98/102 = 96.08%
+False 문항 번호 → 18, 28, 29, 30
+
 01. query: 아이스 라티
     expected: ICE 카페라떼
     corrected: ICE 카페라떼
