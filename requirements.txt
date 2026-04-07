@@ -26,3 +26,7 @@ rapidfuzz     # fuzzy matching  → STT 오인식 보정
 # -------------------------------
 chromadb    # 메뉴 임베딩 저장 및 vector search 
 
+# -------------------------------
+# LLM API
+# -------------------------------
+openai            # OpenAI API
