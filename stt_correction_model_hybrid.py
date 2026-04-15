@@ -485,7 +485,7 @@ def rank_menu_candidates(query, top_k=5):
     for idx, menu in enumerate(menu_list):
         fuzzy_score = fuzz.token_set_ratio(query, menu) / 100.0
         semantic_score = float(scores[idx])
-        hybrid_score = semantic_score * 0.7 + fuzzy_score * 0.3
+        hybrid_score = semantic_score * 0.5 + fuzzy_score * 0.5
         ranked.append((hybrid_score, menu))
 
     ranked.sort(reverse=True)
