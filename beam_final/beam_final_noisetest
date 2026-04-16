@@ -1,0 +1,125 @@
+import numpy as np
+import sounddevice as sd
+import scipy.signal
+import whisper
+import os
+from datetime import datetime
+
+# --- [환경 변수 세팅] ---
+RATE = 16000
+CHANNELS = 2
+RECORD_SEC = 5.0
+MEASURE_COUNT = 3
+MIC_DISTANCE = 0.077   
+SOUND_SPEED = 343.0
+
+print("📦 Whisper 모델 로딩 중...")
+stt_model = whisper.load_model("base")
+
+# 결과 저장을 위한 파일 설정
+current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+log_filename = f"실험결과_{current_time}.txt"
+
+def save_to_log(text):
+    """메모장 파일에 내용을 추가하고 화면에도 출력합니다."""
+    print(text)
+    with open(log_filename, "a", encoding="utf-8") as f:
+        f.write(text + "\n")
+
+def apply_hybrid_beamforming(stereo_data, limit_angle=15, lambda_val=2.0):
+    left, right = stereo_data[:, 0], stereo_data[:, 1]
+    
+    # [단계 1] GCC-PHAT (눈가리개 15도 적용)
+    n = len(left) + len(right) - 1
+    N_fft = 1 << (n-1).bit_length()
+    X1, X2 = np.fft.rfft(left, n=N_fft), np.fft.rfft(right, n=N_fft)
+    S_phat = (X1 * np.conj(X2)) / (np.abs(X1 * np.conj(X2)) + 1e-10)
+    cc = np.fft.irfft(S_phat, n=N_fft)
+    cc = np.concatenate((cc[-N_fft//2:], cc[:N_fft//2]))
+    center = N_fft // 2
+    
+    limit_tau = (MIC_DISTANCE * np.sin(np.deg2rad(limit_angle))) / SOUND_SPEED
+    limit_shift = int(np.ceil(limit_tau * RATE))
+    search_range = cc[center - limit_shift : center + limit_shift + 1]
+    true_shift = np.argmax(np.abs(search_range)) - limit_shift
+
+    # [단계 2] 대칭적 위상 정렬
+    shift_L = -(true_shift // 2)
+    shift_R = true_shift + shift_L
+    aligned_left = np.roll(left, shift_L)
+    aligned_right = np.roll(right, shift_R)
+
+    y_sum = (aligned_left + aligned_right) / 2.0
+    y_diff = (aligned_left - aligned_right) / 2.0
+
+    # [단계 3] STFT 주파수 영역 핀셋 감쇠
+    f_bins, t_frames, Z_sum = scipy.signal.stft(y_sum, fs=RATE, nperseg=512)
+    _, _, Z_diff = scipy.signal.stft(y_diff, fs=RATE, nperseg=512)
+
+    mag_sum = np.abs(Z_sum)
+    mag_diff = np.abs(Z_diff)
+
+    W_freq = np.clip(1.0 - lambda_val * (mag_diff / (mag_sum + 1e-10)), 0.05, 1.0)
+    Z_final = Z_sum * W_freq
+
+    _, combined = scipy.signal.istft(Z_final, fs=RATE)
+    combined = combined[:len(y_sum)]
+    
+    return combined.astype(np.float32)
+
+def measure_snr_setup():
+    save_to_log("\n" + "="*50 + "\n[사전 dB 체크] 실험 환경 세팅\n" + "="*50)
+    input("1. [주문자 위치 스피커] 재생 후 엔터...")
+    t_raw = sd.rec(int(3.0 * RATE), samplerate=RATE, channels=1); sd.wait()
+    t_db = 20 * np.log10(np.sqrt(np.mean(np.square(t_raw))) + 1e-12)
+    
+    input("2. [소음 위치 스피커] 재생 후 엔터...")
+    n_raw = sd.rec(int(3.0 * RATE), samplerate=RATE, channels=1); sd.wait()
+    n_db = 20 * np.log10(np.sqrt(np.mean(np.square(n_raw))) + 1e-12)
+    
+    save_to_log(f"✅ SNR 판정 완료 (타겟: {t_db:.2f}dB, 소음: {n_db:.2f}dB)")
+    save_to_log(f"✅ 소음이 타겟보다 {n_db - t_db:.2f}dB 더 큽니다.")
+    input("\n본 실험 시작 -> [Enter]")
+
+def main():
+    measure_snr_setup()
+    
+    t_angles = [0, 10, 30]      
+    n_angles = [45, 60, 90]     
+    total = len(t_angles) * len(n_angles)
+    count = 1
+
+    for ta in t_angles:
+        for na in n_angles:
+            print(f"\n[{count}/{total}] 타겟:{ta}도 / 소음:{na}도 녹음 중...")
+            trial_data = []
+            
+            for trial in range(1, MEASURE_COUNT + 1):
+                input(f"   [{trial}회차] 5초 녹음 준비 (엔터)...")
+                raw = sd.rec(int(RECORD_SEC * RATE), samplerate=RATE, channels=CHANNELS)
+                sd.wait()
+                
+                beam = apply_hybrid_beamforming(raw, limit_angle=15, lambda_val=2.0)
+                
+                raw_stt_data = np.clip(raw[:, 0], -1.0, 1.0).astype(np.float32)
+                beam_stt_data = np.clip(beam, -1.0, 1.0).astype(np.float32)
+                trial_data.append((trial, raw_stt_data, beam_stt_data))
+                print("   ✔ 완료")
+            
+            # 일괄 분석 및 파일 저장
+            save_to_log(f"\n🎯 타겟 {ta}도, 소음 {na}도 실험 결과:")
+            for trial, raw_data, beam_data in trial_data:
+                res_raw = stt_model.transcribe(raw_data, language="ko", fp16=False)
+                res_beam = stt_model.transcribe(beam_data, language="ko", fp16=False)
+                
+                save_to_log(f"[{trial}회차]")
+                save_to_log(f" - 일반 모델(RAW): {res_raw['text'].strip()}")
+                save_to_log(f" - 최종 모델(BEAM): {res_beam['text'].strip()}")
+            
+            save_to_log("-" * 60)
+            count += 1
+    
+    print(f"\n✅ 모든 실험이 완료되었습니다. 결과가 '{log_filename}'에 저장되었습니다.")
+
+if __name__ == "__main__":
+    main()
