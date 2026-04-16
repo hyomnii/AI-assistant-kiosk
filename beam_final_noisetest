@@ -1,0 +1,121 @@
+import numpy as np
+import sounddevice as sd
+import scipy.io.wavfile as wavfile
+import os
+import whisper  # 🌟 Whisper 라이브러리 추가
+import time
+
+# --- [실험 및 공학적 파라미터] ---
+RATE = 16000
+CHANNELS = 2
+RECORD_SEC = 5.0
+MEASURE_COUNT = 3
+
+MIC_DISTANCE = 0.077   
+SOUND_SPEED = 343.0
+
+SAVE_DIR = "STT_Test_Wav"
+if not os.path.exists(SAVE_DIR):
+    os.makedirs(SAVE_DIR)
+
+# 🌟 Whisper 모델 로드 (base 모델이 속도가 빠르고 적당히 정확합니다)
+print("📦 Whisper 모델 로딩 중... 잠시만 기다려 주세요.")
+stt_model = whisper.load_model("base")
+
+# --- [수식 1~6번 완벽 매칭 빔포밍 함수] ---
+def apply_ultimate_beamforming(stereo_data, max_angle=15, lambda_val=3.0):
+    left, right = stereo_data[:, 0], stereo_data[:, 1]
+    n = len(left) + len(right) - 1
+    N_fft = 1 << (n-1).bit_length()
+    X1, X2 = np.fft.rfft(left, n=N_fft), np.fft.rfft(right, n=N_fft)
+    S_phat = (X1 * np.conj(X2)) / (np.abs(X1 * np.conj(X2)) + 1e-10)
+    cc = np.fft.irfft(S_phat, n=N_fft)
+    cc = np.concatenate((cc[-N_fft//2:], cc[:N_fft//2]))
+    center = N_fft // 2
+    full_max_shift = int(np.ceil((MIC_DISTANCE / SOUND_SPEED) * RATE))
+    full_search_range = cc[center - full_max_shift : center + full_max_shift + 1]
+    true_shift = np.argmax(np.abs(full_search_range)) - full_max_shift
+    target_max_shift = int(np.ceil((MIC_DISTANCE * np.sin(np.deg2rad(max_angle)) / SOUND_SPEED) * RATE))
+    g_theta = 1.0 if abs(true_shift) <= target_max_shift else 0.05
+    shift_L = -(true_shift // 2)
+    shift_R = true_shift + shift_L
+    aligned_left = np.roll(left, shift_L)
+    aligned_right = np.roll(right, shift_R)
+    y_sum = (aligned_left + aligned_right) / 2.0
+    y_diff = (aligned_left - aligned_right) / 2.0
+    rms_sum = np.sqrt(np.mean(np.square(y_sum)) + 1e-10)
+    rms_diff = np.sqrt(np.mean(np.square(y_diff)) + 1e-10)
+    W = np.clip(1.0 - lambda_val * (rms_diff / rms_sum), 0.05, 1.0) 
+    return (g_theta * W * y_sum).astype(np.float32)
+
+def save_wav(filename, data):
+    wavfile.write(filename, RATE, np.clip(data, -1.0, 1.0))
+
+# --- [사전 dB 체크] ---
+def measure_snr_setup():
+    print("\n" + "=" * 60)
+    print(" [사전 검증] Negative SNR 세팅 확인 ")
+    print("=" * 60)
+    input(" 1. [주문자만] 재생 후 [Enter]를 누르세요...")
+    t_raw = sd.rec(int(3.0 * RATE), samplerate=RATE, channels=1); sd.wait()
+    t_db = 20 * np.log10(np.sqrt(np.mean(np.square(t_raw))) + 1e-12)
+    input(" 2. [소음기만] 재생 후 [Enter]를 누르세요...")
+    n_raw = sd.rec(int(3.0 * RATE), samplerate=RATE, channels=1); sd.wait()
+    n_db = 20 * np.log10(np.sqrt(np.mean(np.square(n_raw))) + 1e-12)
+    print(f"\n 판정: 소음이 {n_db - t_db:.2f} dB 더 큼")
+    input("\n 본 실험을 시작하려면 [Enter]를 누르세요.")
+
+# --- [본 실험 루프] ---
+def main():
+    measure_snr_setup()
+    
+    target_angles = [0, 15, 30]    # 20cm 타겟
+    noise_angles = [45, 60, 90]     # 50cm 소음 (0도는 빔포밍 한계상 제외 권장)
+    
+    total_exp = len(target_angles) * len(noise_angles)
+    count = 1
+
+    for t_angle in target_angles:
+        for n_angle in noise_angles:
+            print(f"\n[{count}/{total_exp}] 🎯 타겟: 20cm/{t_angle}도 | 🔊 소음: 50cm/{n_angle}도")
+            
+            for trial in range(1, MEASURE_COUNT + 1):
+                input(f"   [{trial}회차] 준비 후 [Enter]를 눌러 녹음 시작...")
+                print(f"   ▶ 녹음 중...", end="", flush=True)
+                raw_stereo = sd.rec(int(RECORD_SEC * RATE), samplerate=RATE, channels=CHANNELS); sd.wait()
+                
+                # 1. 빔포밍 적용
+                beam_audio = apply_ultimate_beamforming(raw_stereo, lambda_val=3.0)
+                
+                # 2. 파일 저장
+                fname = f"T{t_angle}_N{n_angle}_trial{trial}"
+                raw_path = os.path.join(SAVE_DIR, f"{fname}_RAW.wav")
+                beam_path = os.path.join(SAVE_DIR, f"{fname}_BEAM.wav")
+                save_wav(raw_path, raw_stereo[:, 0])
+                save_wav(beam_path, beam_audio)
+                print(" 저장 완료!", end=" ")
+                
+                # 3. Whisper STT 분석 🌟
+                print("| STT 분석 중...", end="", flush=True)
+                
+                # [수정된 부분] 파일 경로(raw_path) 대신, 메모리의 numpy 배열을 직접 전달!
+                # Whisper는 -1.0 ~ 1.0 사이의 float32 데이터를 좋아합니다.
+                raw_for_stt = np.clip(raw_stereo[:, 0], -1.0, 1.0).astype(np.float32)
+                beam_for_stt = np.clip(beam_audio, -1.0, 1.0).astype(np.float32)
+                
+                result_raw = stt_model.transcribe(raw_for_stt, language="ko", fp16=False)
+                result_beam = stt_model.transcribe(beam_for_stt, language="ko", fp16=False)
+                
+                print(f"\n   -------------------------------------------------")
+                print(f"   [결과] 일반 모델(RAW) : {result_raw['text'].strip()}")
+                print(f"   [결과] 최종 모델(BEAM): {result_beam['text'].strip()}")
+                print(f"   -------------------------------------------------")
+                
+            count += 1
+
+    print("\n" + "=" * 80)
+    print(" 실험이 종료되었습니다. 모든 음성 파일과 STT 결과가 확보되었습니다. ")
+    print("=" * 80)
+
+if __name__ == "__main__":
+    main()
