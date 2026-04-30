@@ -1,5 +1,6 @@
 ﻿import numpy as np
 import sounddevice as sd
+import scipy.signal
 import whisper
 from gtts import gTTS
 import os
@@ -14,12 +15,12 @@ SOUND_SPEED = 343.0
 STT_RECORD_SECONDS = 4.0
 STT_CHANNELS = 2
 
-
-# --- [beamforming 함수 유지] ---
+# --- [최종 반영된 beamforming 함수] ---
 def apply_ultimate_beamforming(stereo_data, max_angle=15, lambda_val=3.0):
     left = stereo_data[:, 0]
     right = stereo_data[:, 1]
 
+    # [단계 1] GCC-PHAT (15도 눈가리개 적용: 제한된 구간 내에서만 탐색)
     n = len(left) + len(right) - 1
     n_fft = 1 << (n - 1).bit_length()
     x1 = np.fft.rfft(left, n=n_fft)
@@ -29,15 +30,15 @@ def apply_ultimate_beamforming(stereo_data, max_angle=15, lambda_val=3.0):
     cc = np.concatenate((cc[-n_fft // 2 :], cc[: n_fft // 2]))
     center = n_fft // 2
 
-    full_max_tau = MIC_DISTANCE / SOUND_SPEED
-    full_max_shift = int(np.ceil(full_max_tau * RATE))
-    full_search_range = cc[center - full_max_shift : center + full_max_shift + 1]
-    true_shift = np.argmax(np.abs(full_search_range)) - full_max_shift
+    # 처음부터 15도 한계(limit) 안에서만 찾기
+    limit_tau = (MIC_DISTANCE * np.sin(np.deg2rad(max_angle))) / SOUND_SPEED
+    limit_shift = int(np.ceil(limit_tau * RATE))
+    search_range = cc[center - limit_shift : center + limit_shift + 1]
+    
+    # 15도 안에서 가장 큰 시간차(진원지) 찾기
+    true_shift = np.argmax(np.abs(search_range)) - limit_shift
 
-    target_max_tau = (MIC_DISTANCE * np.sin(np.deg2rad(max_angle))) / SOUND_SPEED
-    target_max_shift = int(np.ceil(target_max_tau * RATE))
-    g_theta = 1.0 if abs(true_shift) <= target_max_shift else 0.05
-
+    # [단계 2] 대칭적 위상 정렬
     shift_l = -(true_shift // 2)
     shift_r = true_shift + shift_l
     aligned_left = np.roll(left, shift_l)
@@ -46,12 +47,23 @@ def apply_ultimate_beamforming(stereo_data, max_angle=15, lambda_val=3.0):
     y_sum = (aligned_left + aligned_right) / 2.0
     y_diff = (aligned_left - aligned_right) / 2.0
 
-    rms_sum = np.sqrt(np.mean(np.square(y_sum)) + 1e-10)
-    rms_diff = np.sqrt(np.mean(np.square(y_diff)) + 1e-10)
-    penalty = lambda_val * (rms_diff / rms_sum)
-    weight = np.clip(1.0 - penalty, 0.05, 1.0)
+    # [단계 3] STFT 기반 주파수 영역 핀셋 감쇠
+    f_bins, t_frames, Z_sum = scipy.signal.stft(y_sum, fs=RATE, nperseg=512)
+    _, _, Z_diff = scipy.signal.stft(y_diff, fs=RATE, nperseg=512)
 
-    combined = g_theta * weight * y_sum
+    mag_sum = np.abs(Z_sum)
+    mag_diff = np.abs(Z_diff)
+
+    # 주파수 대역별 가중치 계산 및 적용
+    W_freq = np.clip(1.0 - lambda_val * (mag_diff / (mag_sum + 1e-10)), 0.05, 1.0)
+    Z_final = Z_sum * W_freq
+
+    # 최종 시간 영역 신호로 복원
+    _, combined = scipy.signal.istft(Z_final, fs=RATE)
+    
+    # 원본 길이와 맞추기
+    combined = combined[:len(y_sum)]
+    
     return combined.astype(np.float32)
 
 
