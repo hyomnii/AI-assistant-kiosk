@@ -1,0 +1,124 @@
+import numpy as np
+import sounddevice as sd
+import whisper
+import pandas as pd
+import re
+import warnings
+
+# 경고 메시지 숨김 (깔끔한 출력을 위해)
+warnings.filterwarnings("ignore")
+
+# 기존 빔포밍 함수 불러오기 (beam_final.py가 같은 폴더에 있어야 함)
+from beam_final import apply_ultimate_beamforming
+
+# --- 실험 설정값 ---
+STT_RECORD_SECONDS = 4.0
+STT_SAMPLE_RATE = 16000
+STT_CHANNELS = 2
+WHISPER_MODEL = "base"  # 사용중인 모델 사이즈에 맞게 변경 (tiny, base 등)
+
+# --- 방어로직 임계값 (main.py와 동일하게 세팅) ---
+MAX_NO_SPEECH_PROB = 0.65
+MIN_AVG_LOGPROB = -1.2
+MIN_VALID_CHAR_RATIO = 0.55
+
+def check_defense_logic(text, no_speech_prob, avg_logprob):
+    """3중 방어 로직을 거쳐 통과/차단 여부와 사유를 반환합니다."""
+    text = text.strip()
+    
+    # 1. 길이 검사
+    if len(text) <= 2:
+        return "차단", "텍스트 길이 너무 짧음"
+    
+    # 2. 비음성(소음) 확률 검사
+    if no_speech_prob > MAX_NO_SPEECH_PROB:
+        return "차단", f"비음성 확률 초과 ({no_speech_prob:.2f} > {MAX_NO_SPEECH_PROB})"
+    
+    # 3. STT 인식 신뢰도 검사
+    if avg_logprob < MIN_AVG_LOGPROB:
+        return "차단", f"신뢰도 미달 ({avg_logprob:.2f} < {MIN_AVG_LOGPROB})"
+    
+    # 4. 유효 글자(한글) 비율 검사
+    korean_chars = len(re.findall(r'[가-힣]', text))
+    valid_ratio = korean_chars / len(text) if len(text) > 0 else 0
+    if valid_ratio < MIN_VALID_CHAR_RATIO:
+        return "차단", f"유효글자 비율 미달 ({valid_ratio:.2f} < {MIN_VALID_CHAR_RATIO})"
+
+    return "통과", "정상 인식"
+
+def run_experiment():
+    print("🤖 Whisper 모델 로딩 중...")
+    model = whisper.load_model(WHISPER_MODEL)
+    print("✅ 로딩 완료!\n")
+    
+    angle = input("🎯 현재 실험할 각도를 입력하세요 (예: 0, 45, 90): ")
+    trials = 10  # 10번 반복
+    
+    results = []
+
+    print(f"\n🚀 [{angle}도] 각도에서 '아이스 아메리카노 한 잔' 발화 실험을 {trials}회 시작합니다.")
+    
+    for i in range(1, trials + 1):
+        input(f"[{i}/{trials}회차] 준비되면 엔터키를 누르세요...")
+        
+        print(f"🎤 {STT_RECORD_SECONDS}초간 녹음 중...")
+        audio = sd.rec(
+            int(STT_RECORD_SECONDS * STT_SAMPLE_RATE),
+            samplerate=STT_SAMPLE_RATE,
+            channels=STT_CHANNELS,
+            dtype="float32",
+        )
+        sd.wait()
+        
+        # 1. 빔포밍 적용
+        beamformed_audio = apply_ultimate_beamforming(audio)
+        beamformed_audio = np.squeeze(beamformed_audio).astype(np.float32)
+        
+        # 2. Whisper STT 변환
+        print("⏳ STT 변환 및 수치 분석 중...")
+        result = model.transcribe(beamformed_audio, language="ko", fp16=False)
+        raw_text = result.get("text", "").strip()
+        
+        # 3. 내부 수치(Metrics) 추출
+        segments = result.get("segments", [])
+        if segments:
+            # 평균값 혹은 첫 번째 세그먼트 값 가져오기
+            no_speech_prob = segments[0].get("no_speech_prob", 1.0)
+            avg_logprob = segments[0].get("avg_logprob", -5.0)
+        else:
+            no_speech_prob = 1.0
+            avg_logprob = -5.0
+
+        # 4. 방어 로직 평가
+        status, reason = check_defense_logic(raw_text, no_speech_prob, avg_logprob)
+        
+        # 결과 저장
+        results.append({
+            "회차": i,
+            "인식된 텍스트": raw_text if raw_text else "(공백)",
+            "비음성 확률": round(no_speech_prob, 3),
+            "신뢰도(LogProb)": round(avg_logprob, 3),
+            "결과 (통과/차단)": status,
+            "상세 사유": reason
+        })
+        
+        print(f"결과: {status} [{reason}] -> 인식 문장: '{raw_text}'\n")
+
+    # --- 실험 결과 요약표 출력 ---
+    df = pd.DataFrame(results)
+    print("\n" + "="*60)
+    print(f"📊 [{angle}도] 측면 컷오프 실험 결과 요약")
+    print("="*60)
+    print(df.to_string(index=False))
+    
+    # 0도는 '통과'가 성공, 측면은 '차단'이 성공
+    if angle == "0":
+        success_count = len(df[df["결과 (통과/차단)"] == "통과"])
+        print(f"\n💡 정면(0도) 인식 성공률: {success_count}/{trials} ({success_count/trials*100:.1f}%)")
+    else:
+        success_count = len(df[df["결과 (통과/차단)"] == "차단"])
+        print(f"\n💡 측면({angle}도) 소음 차단(컷오프) 성공률: {success_count}/{trials} ({success_count/trials*100:.1f}%)")
+    print("="*60)
+
+if __name__ == "__main__":
+    run_experiment()
