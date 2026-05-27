@@ -131,6 +131,7 @@ class Conversation:
         self.state = "WAITING_ORDER"
         self.pending_menu = None
         self.pending_candidates = []
+        self.pending_order_items = []
 
     # 마이크 입력을 받아 텍스트 주문 처리 흐름으로 넘긴다.
     def handle_voice(self):
@@ -138,7 +139,7 @@ class Conversation:
         raw_text = main.listen_with_beamforming(
             stt_model(),
             wait_for_enter=False,
-            allow_short_confirmation=self.state in {"CONFIRM_MENU", "DEFAULT_OPTION_CONFIRM", "OPTION_SELECT"},
+            allow_short_confirmation=self.state in {"CONFIRM_MENU", "CONFIRM_MULTI_MENU", "DEFAULT_OPTION_CONFIRM", "OPTION_SELECT"},
         )
         return self.handle(raw_text, source="voice")
 
@@ -155,11 +156,27 @@ class Conversation:
             self.reset()
             return self._response(events, "주문을 종료했습니다. 다시 주문하시려면 말씀해 주세요.")
 
-        if self.state == "CONFIRM_MENU":
+        if self.state in {"CONFIRM_MENU", "CONFIRM_MULTI_MENU"}:
             corrected_text = main.correct_confirmation_answer(raw_text)
         else:
             corrected_text = main.correct_text(raw_text, context=main.get_correction_context(self.state))
         corrected_text = normalize_text(corrected_text)
+
+        if self.state == "CONFIRM_MULTI_MENU":
+            confirmation = main.classify_confirmation_answer_with_llm(corrected_text)
+            if confirmation == "yes":
+                events[0]["text"] = "네, 맞아요"
+                completed_items = list(self.pending_order_items)
+                response_text = main.generate_multi_order_response(completed_items)
+                self.reset()
+                return self._response(events, response_text, order_items=completed_items)
+
+            if confirmation == "no":
+                events[0]["text"] = "아니요"
+                self.reset()
+                return self._response(events, "아, 죄송합니다. 다시 한 번 말씀해 주시겠어요?")
+
+            return self._response(events, "맞으면 맞아요, 아니면 아니요라고 말씀해 주세요.")
 
         if self.state == "CONFIRM_MENU":
             if self.pending_menu and self.pending_menu in corrected_text:
@@ -237,9 +254,10 @@ class Conversation:
         ordered_menus = main.extract_multiple_order_menus(raw_text, corrected_text)
         if ordered_menus:
             events[0]["text"] = ", ".join(ordered_menus)
-            response_text = main.generate_multi_order_response(ordered_menus)
-            self.reset()
-            return self._response(events, response_text, order_items=ordered_menus)
+            self.pending_order_items = ordered_menus
+            self.state = "CONFIRM_MULTI_MENU"
+            response_text = main.get_multi_order_confirmation_question(ordered_menus)
+            return self._response(events, response_text)
 
         search_text = main.preserve_temp_for_search(raw_text, corrected_text)
         result = main.search_menu(search_text)
@@ -291,7 +309,7 @@ class Conversation:
             "pending_menu": self.pending_menu,
             "candidates": candidates or self.pending_candidates,
             "default_options": default_options,
-            "ai_order_items": order_items or [],
+            "ai_order_items": order_items or (self.pending_order_items if self.state == "CONFIRM_MULTI_MENU" else []),
         }
 
 
@@ -2251,6 +2269,10 @@ INDEX_HTML = r"""<!doctype html>
         aiOrderBox.hidden = true;
         voiceTitle.textContent = "말씀해 주세요.";
         voiceHelp.textContent = "해당 메뉴가 맞으시면 네 맞아요, 아니시면 아니요 라고 말씀해주세요.";
+      } else if (data.state === "CONFIRM_MULTI_MENU") {
+        aiOrderBox.hidden = true;
+        voiceTitle.textContent = "주문 메뉴를 확인해 주세요.";
+        voiceHelp.textContent = "메뉴가 맞으시면 네 맞아요, 아니시면 아니요 라고 말씀해주세요.";
       } else if (data.state === "DEFAULT_OPTION_CONFIRM") {
         await showAiOrderBox(data);
         voiceTitle.textContent = "새로운 주문을 시작하시겠어요?";
@@ -2298,7 +2320,7 @@ INDEX_HTML = r"""<!doctype html>
 
     // 대화 로그에 메시지 한 줄을 추가한다.
     function ttsTextForEvent(text, state) {
-      if (state !== "CONFIRM_MENU") return text;
+      if (!["CONFIRM_MENU", "CONFIRM_MULTI_MENU"].includes(state)) return text;
       return String(text || "").split("\n")[0];
     }
 
@@ -2306,7 +2328,7 @@ INDEX_HTML = r"""<!doctype html>
       if (role === "system") return;
       const el = document.createElement("div");
       el.className = `message ${role}`;
-      if (role === "assistant" && state === "CONFIRM_MENU") {
+      if (role === "assistant" && ["CONFIRM_MENU", "CONFIRM_MULTI_MENU"].includes(state)) {
         const [mainText] = String(text || "").split("\n");
         el.textContent = mainText;
         const help = document.createElement("span");

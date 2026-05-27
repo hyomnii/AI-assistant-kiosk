@@ -255,34 +255,35 @@ def extract_order_menus_from_text(text):
             end = index + len(compact_base)
             overlaps = any(index < used_end and end > used_start for used_start, used_end in occupied)
             if not overlaps:
-                window = compact[max(0, index - 10):index]
-                wants_ice = any(token in window for token in ["ICE", "아이스", "아이쓰", "아이수", "차가운", "시원한"])
-                wants_hot = any(token in window for token in ["HOT", "따뜻한", "뜨거운", "핫"])
-                ice_name = f"ICE {base}"
-
-                if wants_ice and ice_name in menu_by_name:
-                    menu_name = ice_name
-                elif wants_hot and base in menu_by_name:
-                    menu_name = base
-                elif base in menu_by_name:
-                    menu_name = base
-                elif ice_name in menu_by_name:
-                    menu_name = ice_name
-                else:
-                    menu_name = None
-
-                if menu_name:
-                    matches.append((index, menu_name))
-                    occupied.append((index, end))
+                matches.append((index, end, base))
+                occupied.append((index, end))
 
             start = end
 
     ordered = []
     seen = set()
-    for _, menu_name in sorted(matches):
-        if menu_name not in seen:
+    previous_end = 0
+    for index, end, base in sorted(matches):
+        window = compact[previous_end:index]
+        wants_ice = any(token in window for token in ["ICE", "아이스", "아이쓰", "아이수", "차가운", "시원한"])
+        wants_hot = any(token in window for token in ["HOT", "따뜻한", "뜨거운", "핫"])
+        ice_name = f"ICE {base}"
+
+        if wants_ice and ice_name in menu_by_name:
+            menu_name = ice_name
+        elif wants_hot and base in menu_by_name:
+            menu_name = base
+        elif base in menu_by_name:
+            menu_name = base
+        elif ice_name in menu_by_name:
+            menu_name = ice_name
+        else:
+            menu_name = None
+
+        if menu_name and menu_name not in seen:
             ordered.append(menu_name)
             seen.add(menu_name)
+        previous_end = end
     return ordered
 
 
@@ -344,6 +345,11 @@ def generate_multi_order_response(menus):
         for menu in menus
     )
     return f"네, {menu_text} 각각 1개씩 주문 목록에 담았습니다.\n기본 옵션은\n{option_lines}\n주문이 완료되었습니다."
+
+
+def get_multi_order_confirmation_question(menus):
+    menu_text = ", ".join(display_menu_name(menu) for menu in menus)
+    return f"{menu_text} 각각 1개씩 맞으실까요?"
 
 
 # 11. 확인 질문에 대한 긍정 답변 여부 1차 판단.
