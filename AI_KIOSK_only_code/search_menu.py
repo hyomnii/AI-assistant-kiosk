@@ -42,7 +42,7 @@ def _generate_openai_text(prompt, model_name):
 df = pd.read_csv("menu.csv", encoding="cp949")
 
 client_db = PersistentClient(
-    path=r"C:\Users\정의현\Desktop\종합설계\AI-assistant-kiosk\menu_db"
+    path="./menu_db"
 )
 collection = client_db.get_collection(name="menu_db")
 
